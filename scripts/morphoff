@@ -1,0 +1,209 @@
+#! /usr/bin/env python
+# -*- coding: utf-8 -*-
+from __future__ import print_function
+__title__ = 'morphoff'
+__author__ = 'Steven Cutting'
+__author_email__ = 'steven.e.cutting@gmail.com'
+__created_on__ = '04/09/2017'
+
+
+import logging
+import sys
+import os
+from os import path
+import pickle
+
+import click
+from arrow import now
+try:
+    import cytoolz as tlz
+    from cytoolz import curried as tlzc
+except ImportError:
+    import toolz as tlz
+    from toolz import curried as tlzc
+
+from scripts import s_utils as su
+from h_topic_model import utils as u
+from h_topic_model import wcfile as wc
+from h_topic_model import segment as seg
+
+from morphoff import mkfcatmodel as fm
+from morphoff import fcatsegment as fseg
+from morphoff import mktokens as mkt
+
+
+LOG = logging.getLogger(__name__)
+SCRIPT_NAME = __name__.split(".")[-1]
+LOGFMT = '%(levelname)s:%(asctime)s:%(name)s\tscript-name:{s}\t%(message)s'.format(s=SCRIPT_NAME)
+
+CWD = os.getcwd()
+D_WC_FILE = "wc.csv"
+D_WC_FILE_P = path.join(CWD, D_WC_FILE)
+D_MORF_MODEL_FILE = "morfessor_model.bin"
+D_MORF_MODEL_FILE_P = path.join(CWD, D_MORF_MODEL_FILE)
+D_MORF_SEG_FILE = "morfessor_model-bin-segmentations.txt"
+D_MORF_SEG_FILE_P = path.join(CWD, D_MORF_SEG_FILE)
+D_FCAT_MODEL_FILE = "flatcat_model.tar.gz"
+D_FCAT_MODEL_FILE_P = path.join(CWD, D_FCAT_MODEL_FILE)
+
+
+@click.group()
+@click.option("--loglvl", default="info", type=str,
+              help="Logging level. Default info. Options: debug, info, warning, error, critical")
+@click.option("--logfile", "-L", default=None, type=str,
+              help="Write log messages to this file. Defaults to stdout.")
+@click.option("--random_state", "-R", default=None, type=int,
+              help="Random State. Allows for reproducible results.")  # TODO (sc) Improve help
+@click.pass_context
+def cli(ctx, loglvl, logfile, random_state):
+    ctx.obj = {}
+    ctx.obj["LOGFILE"] = logfile
+    ctx.obj["STARTTIME"] = now()
+    ctx.obj["RANDOMSTATE"] = random_state
+
+    logging.basicConfig(format=LOGFMT,
+                        level=su.str_to_log_level_code(loglvl),
+                        stream=sys.stdout,
+                        filename=logfile)
+    logging.root.level = su.str_to_log_level_code(loglvl)
+    logging.basicConfig
+
+
+@cli.command(help="""
+""")
+@click.option("--wcfile", "-W", type=str, default=D_WC_FILE_P,
+              help="".join(["Token source for morfessor-train. Default: ",
+                            D_WC_FILE_P]))
+@click.option("--morf_seg_file", "-M", type=str, default=D_MORF_SEG_FILE_P,
+              help="".join(["Load this file containing morfessor segmentations. Default: ",
+                            D_MORF_SEG_FILE_P]))
+@click.option("--fcat_model_file", "-S", type=str, default=D_FCAT_MODEL_FILE_P,
+              help="".join(["Save this flatcat model from to file. Default: ",
+                            D_FCAT_MODEL_FILE_P]))
+@click.option("--encoding", "-E", default="utf-8",
+              help="Character encoding of the wcfile file.")
+@click.pass_context
+def flatcat(ctx, fcat_model_file, morf_seg_file, wcfile, encoding):
+    LOG.info("Starting flatcat")
+    randomState = ctx.obj["RANDOMSTATE"]
+
+    model = fm.fit_flatcat_model(morf_seg_file, randomState=randomState)
+    fm.save_flatcat_model(fcat_model_file, model)
+
+    runtime = su.log_run_time(ctx.obj["STARTTIME"])
+    LOG.info("Finished flatcat")
+
+
+@cli.command(help="""
+""")
+@click.argument("input_directory")
+@click.option("--morf_model_file", "-M", type=str, default=D_MORF_MODEL_FILE_P,
+              help="".join(["File that contains the morfessor model to use. Default: ",
+                            D_MORF_MODEL_FILE_P]))
+@click.option("--fcat_model_file", "-S", type=str, default=D_FCAT_MODEL_FILE_P,
+              help="".join(["load this flatcat model from this file. Default: ",
+                            D_FCAT_MODEL_FILE_P]))
+@click.option("--prob", "-P", default=1.0, type=float,
+              help="Probability a file will be chosen. Create a random sample. 1.0 = 100%")
+@click.pass_context
+def segmenttest(ctx, input_directory, morf_model_file, fcat_model_file, prob):
+    LOG.info("Starting segmenttest")
+
+    # -- Loading Morfessor Model --
+    LOG.info("Loading morfessor model: {}".format(morf_model_file))
+    morfmodel = seg.load_morfessor_model(morf_model_file)
+
+    # LOG.info("Loading flatcat model: {}".format(fcat_model_file))
+    # flatcatmodel = fseg.load_flatcat_model(fcat_model_file)
+
+    # -- Finding and Loading input files --
+    LOG.info("Loading input files from: {}".format(input_directory))
+    filenames = tlz.random_sample(prob=prob,
+                                  seq=u.spelunker_gen(input_directory),
+                                  random_state=ctx.obj["RANDOMSTATE"])
+
+    LOG.info("Loading and cleaning the text.")
+    txts = list(tlz.map(u.load_and_decode, filenames))
+
+    LOG.info("Number of texts {}.".format(len(txts)))
+
+    # -- Tokenizing input texts --
+    LOG.info("Creating morfessor segmented tokens.")
+    morftokens = tlz.pipe(seg.segment_many(morfmodel, txts, flatten=False),
+                          tlzc.map(list),
+                          list)
+
+    # LOG.info("Creating flatcat segmented tokens.")
+    # fcattokens = tlz.pipe(fseg.segment_many(flatcatmodel, txts, flatten=False),
+    #                       tlzc.map(list),
+    #                       list)
+
+    with open("segments.pickle", "wb") as f:
+        pickle.dump(morftokens, f, -1)
+    # with open("segments.pickle", "wb") as f:
+    #     pickle.dump([morftokens, fcattokens], f, -1)
+
+    su.log_run_time(ctx.obj["STARTTIME"])
+    LOG.info("Finished segmenttest")
+
+
+@cli.command(help="""
+""")
+@click.argument("input_directory")
+@click.option("--morf_model_file", "-M", type=str, default=D_MORF_MODEL_FILE_P,
+              help="".join(["File that contains the morfessor model to use. Default: ",
+                            D_MORF_MODEL_FILE_P]))
+@click.option("--fcat_model_file", "-S", type=str, default=D_FCAT_MODEL_FILE_P,
+              help="".join(["load this flatcat model from this file. Default: ",
+                            D_FCAT_MODEL_FILE_P]))
+@click.option("--prob", "-P", default=1.0, type=float,
+              help="Probability a file will be chosen. Create a random sample. 1.0 = 100%")
+@click.pass_context
+def mksegs(ctx, input_directory, morf_model_file, fcat_model_file, prob):
+    LOG.info("Starting segmenttest")
+
+    # -- Loading Models --
+    LOG.info("Loading morfessor model: {}".format(morf_model_file))
+    morfmodel = seg.load_morfessor_model(morf_model_file)
+
+    LOG.info("Loading flatcat model: {}".format(fcat_model_file))
+    flatcatmodel = fseg.load_flatcat_model(fcat_model_file)
+
+    # -- Finding and Loading input files --
+    LOG.info("Loading input files from: {}".format(input_directory))
+    filenames = tlz.random_sample(prob=prob,
+                                  seq=u.spelunker_gen(input_directory),
+                                  random_state=ctx.obj["RANDOMSTATE"])
+
+    # print(tlz.second(filenames))
+
+          
+    LOG.info("Loading and cleaning the text.")
+    txts = list(tlz.map(u.load_and_decode, filenames))
+
+    LOG.info("Number of texts {}.".format(len(txts)))
+
+    # -- Tokenizing input texts --
+    LOG.info("Creating segmented tokens.")
+    # tokens0 = mkt.dual_segment_many(morfmodel, flatcatmodel, txts)
+    # # print(list(tlz.first(tokens0)))
+    # with open("test.pickle", "wb") as f:
+    #     pickle.dump(list(tlz.take(10, tokens0)), f, -1)
+    # print(list(mkt.to_string_pairs([tlz.first(tokens0)])))
+
+    tokens = tlz.pipe(txts,
+                      mkt.dual_segment_many(morfmodel, flatcatmodel),
+                      mkt.to_string_pairs(separator=" + "),  # TODO (sc) allow custom sep.
+                      mkt.unique)
+
+    # print(tokens[0])
+
+    LOG.info("Writing segments to file")
+    mkt.segments_to_cvs("segments_pairs.csv", tokens, sort_f=lambda t: sorted(t, key=tlz.first))
+
+    su.log_run_time(ctx.obj["STARTTIME"])
+    LOG.info("Finished segmenttest")
+
+
+if __name__ == "__main__":
+    cli()
