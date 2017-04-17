@@ -40,7 +40,7 @@ def mk_dual_segmenter(morfessorModel, flatcatModel):
     msegmenter = mseg.mk_segmenter(morfessorModel)
     fsegmenter = fseg.mk_segmenter(flatcatModel)
 
-    return lambda token: (msegmenter(token), fsegmenter(token))
+    return lambda token: ([token], msegmenter(token), fsegmenter(token))
 
 
 @tlz.curry
@@ -115,7 +115,7 @@ def segments_to_cvs(filename, seq, delimiter='\t', sort_f=tlz.identity, encoding
     csv.register_dialect('custom-sep', delimiter=delimiter)
     with open(filename, 'wb') as out:
         csv_out = csv.writer(out, 'custom-sep')
-        csv_out.writerow(encode_row(encoding, (u"morfessor2.0", u"flatcat")))
+        csv_out.writerow(encode_row(encoding, (u"original", u"morfessor2.0", u"flatcat")))
         for row in sort_f(seq):
             tlz.pipe(row,
                      encode_row(encoding),

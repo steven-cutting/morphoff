@@ -6,7 +6,6 @@ __author_email__ = 'steven.e.cutting@gmail.com'
 __created_on__ = '04/13/2017'
 
 
-import toolz as tlz
 import pytest
 
 from morphoff import fcatsegment as fseg

@@ -177,7 +177,6 @@ def mksegs(ctx, input_directory, morf_model_file, fcat_model_file, prob):
 
     # print(tlz.second(filenames))
 
-          
     LOG.info("Loading and cleaning the text.")
     txts = list(tlz.map(u.load_and_decode, filenames))
 

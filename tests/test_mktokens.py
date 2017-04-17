@@ -13,10 +13,12 @@ from tests import t_utils as tu
 
 
 @pytest.mark.parametrize("string,expected",
-                         [(u"foobarbaz", ([u"foo", u"bar", u"baz"],
+                         [(u"foobarbaz", ([u"foobarbaz"],
+                                          [u"foo", u"bar", u"baz"],
                                           [u"foo", u"bar", u"baz"])),
-                          (u"foo", ([u"foo"], [u"foo"])),
+                          (u"foo", ([u"foo"], [u"foo"], [u"foo"])),
                           (u"הוא צילם עליו כתבה", ([u"הוא צילם עליו כתבה"],
+                                                  [u"הוא צילם עליו כתבה"],
                                                   [u"הוא צילם עליו כתבה"],)),
                           ])
 def test__mk_dual_segmenter(string, expected):
@@ -27,11 +29,10 @@ def test__mk_dual_segmenter(string, expected):
 
 
 @pytest.mark.parametrize("string,expected",
-                         [(u"foo bar baz", [([u"foo"], [u"foo"]),
-                                            ([u"bar"], [u"bar"]),
-                                            ([u"baz"], [u"baz"])]),
-                          (u"foo", [([u"foo", ],
-                                     [u"foo", ])]),
+                         [(u"foo bar baz", [([u"foo"], [u"foo"], [u"foo"]),
+                                            ([u"bar"], [u"bar"], [u"bar"]),
+                                            ([u"baz"], [u"baz"], [u"baz"])]),
+                          (u"foo", [([u"foo", ], [u"foo", ], [u"foo", ])]),
                           ])
 def test__segment_text(string, expected):
     mmodel = tu.MockMorfessorSegmentModel()
@@ -42,15 +43,17 @@ def test__segment_text(string, expected):
 
 @pytest.mark.parametrize("strings,expected,flatten",
                          [([u"foo bar baz", u"foo", u"foobarbaz"],
-                           [[([u"foo"], [u"foo"]),
-                             ([u"bar"], [u"bar"]),
-                             ([u"baz"], [u"baz"])],
-                            [([u"foo"], [u"foo"])],
-                            [([u"foo", u"bar", u"baz"], [u"foo", u"bar", u"baz"])]],
+                           [[([u"foo"], [u"foo"], [u"foo"]),
+                             ([u"bar"], [u"bar"], [u"bar"]),
+                             ([u"baz"], [u"baz"], [u"baz"])],
+                            [([u"foo"], [u"foo"], [u"foo"])],
+                            [([u"foobarbaz"],
+                              [u"foo", u"bar", u"baz"],
+                              [u"foo", u"bar", u"baz"])]],
                            False),
                           ([u"foo bar baz", u"foo"],
-                           [[u"foo"], [u"foo"], [u"bar"], [u"bar"],
-                            [u"baz"], [u"baz"], [u"foo"], [u"foo"]],
+                           [[u"foo"], [u"foo"], [u"foo"], [u"bar"], [u"bar"], [u"bar"],
+                            [u"baz"], [u"baz"], [u"baz"], [u"foo"], [u"foo"], [u"foo"]],
                            True),
                           ])
 def test__dual_segment_many(strings, expected, flatten):
@@ -81,16 +84,17 @@ def test__dual_segment_many(strings, expected, flatten):
                            ", "),
                           ])
 def test__to_string_pairs(data, expected, separator):
+    # TODO (sc) updata inpute data.
     assert(list(mkt.to_string_pairs(data, separator)) == expected)
 
 
 @pytest.mark.parametrize("strings,expected",
                          [([u"foo bar baz", u"foo", u"foobarbaz"],
-                           [(u"foo", u"foo"),
-                            (u"bar", u"bar"),
-                            (u"baz", u"baz"),
-                            (u"foo", u"foo"),
-                            (u"foo + bar + baz", u"foo + bar + baz")]),
+                           [(u"foo", u"foo", u"foo"),
+                            (u"bar", u"bar", u"bar"),
+                            (u"baz", u"baz", u"baz"),
+                            (u"foo", u"foo", u"foo"),
+                            (u"foobarbaz", u"foo + bar + baz", u"foo + bar + baz")]),
                           ])
 def test__dual_segment_many_and_to_string_pairs(strings, expected):
     mmodel = tu.MockMorfessorSegmentModel()
