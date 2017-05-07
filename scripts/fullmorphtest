@@ -1,0 +1,47 @@
+#! /usr/bin/env bash
+
+
+corpus=$1
+annotfile=$2
+
+outputdir="output-$(date +%Y-%m-%d)"
+
+mkdir $outputdir
+cd $outputdir
+
+printf "\n\n\t--- Making Word Count File ---\n\n"
+time command | htopic -R 2017 -L log.log mkwc -P 0.001 $corpus
+
+
+
+printf "\n\n\t--- Fitting Semi-Supervised Models ---\n\n"
+
+printf "\n\tFitting semi supervised morfessor model\n"
+time command | htopic -R 2017 -L log.log morfessor -A $annotfile -M semi_supervised_mfessor.bin
+
+printf "\n\tFitting semi supervised flatcat model\n"
+time command | morphoff -R 2017 -L log.log flatcat -M semi_supervised_mfessor-bin-segmentations.txt -S semi_supervised_flatcat.tar.gz
+
+
+
+printf "\n\n\t--- Fitting Unsupervised Models ---\n\n"
+
+printf "\n\tFitting Unsupervised morfessor model\n"
+time command | htopic -R 2017 -L log.log morfessor
+
+printf "\n\tFitting Unsupervised flatcat model\n"
+time command | morphoff -R 2017 -L log.log flatcat
+
+
+
+printf "\n\n\t--- Fitting Semi-Supervised Random Split Models ---\n\n"
+
+printf "\n\tFiiting semi-supervised random split morfessor model\n"
+time command | htopic -R 2017 -L log.log morfessor -A $annotfile -M randsplit_semi_supervised_mfessor.bin --splitprob 0.8
+
+printf "\n\tFiiting semi-supervised random split flatcat model\n"
+time command | morphoff -R 2017 -L log.log flatcat -M randsplit_semi_supervised_mfessor-bin-segmentations.txt -S randsplit_semi_supervised_flatcat.tar.gz
+
+
+printf "\n\n\t--- Building the segment file ---\n\n"
+time command | morphoff -L log.log -R 2017 testsegs $corpus -P 0.001 -M morfessor2.0 morfessor2 morfessor_model.bin  -M flatcat flatcat flatcat_model.tar.gz  -M semi_superviesd_morfessor2.0 morfessor2 semi_supervised_mfessor.bin  -M semi_supervised_flatcat flatcat semi_supervised_flatcat.tar.gz -M randsplit_semi_supervised_morfessor2.0 morfessor2 randsplit_semi_supervised_mfessor.bin -M randsplit_semi_supervised_flatcat flatcat  randsplit_semi_supervised_flatcat.tar.gz -s segfile2.csv

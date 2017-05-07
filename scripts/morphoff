@@ -12,6 +12,7 @@ import sys
 import os
 from os import path
 import pickle
+from collections import namedtuple
 
 import click
 from arrow import now
@@ -22,14 +23,16 @@ except ImportError:
     import toolz as tlz
     from toolz import curried as tlzc
 
-from scripts import s_utils as su
 from h_topic_model import utils as u
-from h_topic_model import wcfile as wc
+# from h_topic_model import wcfile as wc
 from h_topic_model import segment as seg
 
 from morphoff import mkfcatmodel as fm
 from morphoff import fcatsegment as fseg
 from morphoff import mktokens as mkt
+from morphoff import modelutils as mu
+
+from morphoff import _scriptutils as su
 
 
 LOG = logging.getLogger(__name__)
@@ -45,6 +48,17 @@ D_MORF_SEG_FILE = "morfessor_model-bin-segmentations.txt"
 D_MORF_SEG_FILE_P = path.join(CWD, D_MORF_SEG_FILE)
 D_FCAT_MODEL_FILE = "flatcat_model.tar.gz"
 D_FCAT_MODEL_FILE_P = path.join(CWD, D_FCAT_MODEL_FILE)
+D_SEG_COMP_FILE = "segments_pairs.csv"
+D_SEG_COMP_FILE_P = path.join(CWD, D_SEG_COMP_FILE)
+
+TSEGS_DEFAULT = (su.SegMdlFile("morfessor2.0", "morfessor2", D_MORF_MODEL_FILE_P),
+                 su.SegMdlFile("flatcat", "flatcat", D_FCAT_MODEL_FILE_P))
+TSEGS_DEFAULT_STR = "-M {} {}  -M {} {}".format(TSEGS_DEFAULT[0].name,
+                                                TSEGS_DEFAULT[0].type,
+                                                TSEGS_DEFAULT[0].filename,
+                                                TSEGS_DEFAULT[1].name,
+                                                TSEGS_DEFAULT[1].type,
+                                                TSEGS_DEFAULT[1].filename)
 
 
 @click.group()
@@ -70,6 +84,7 @@ def cli(ctx, loglvl, logfile, random_state):
 
 
 @cli.command(help="""
+    Train a Flatcat segmentation model using a Morfessor model.
 """)
 @click.option("--wcfile", "-W", type=str, default=D_WC_FILE_P,
               help="".join(["Token source for morfessor-train. Default: ",
@@ -78,7 +93,7 @@ def cli(ctx, loglvl, logfile, random_state):
               help="".join(["Load this file containing morfessor segmentations. Default: ",
                             D_MORF_SEG_FILE_P]))
 @click.option("--fcat_model_file", "-S", type=str, default=D_FCAT_MODEL_FILE_P,
-              help="".join(["Save this flatcat model from to file. Default: ",
+              help="".join(["Save this flatcat model to supplied file. Default: ",
                             D_FCAT_MODEL_FILE_P]))
 @click.option("--encoding", "-E", default="utf-8",
               help="Character encoding of the wcfile file.")
@@ -90,84 +105,36 @@ def flatcat(ctx, fcat_model_file, morf_seg_file, wcfile, encoding):
     model = fm.fit_flatcat_model(morf_seg_file, randomState=randomState)
     fm.save_flatcat_model(fcat_model_file, model)
 
-    runtime = su.log_run_time(ctx.obj["STARTTIME"])
+    su.log_run_time(ctx.obj["STARTTIME"])
     LOG.info("Finished flatcat")
 
 
 @cli.command(help="""
+    Creat segmentation comparison file.
 """)
 @click.argument("input_directory")
-@click.option("--morf_model_file", "-M", type=str, default=D_MORF_MODEL_FILE_P,
-              help="".join(["File that contains the morfessor model to use. Default: ",
-                            D_MORF_MODEL_FILE_P]))
-@click.option("--fcat_model_file", "-S", type=str, default=D_FCAT_MODEL_FILE_P,
-              help="".join(["load this flatcat model from this file. Default: ",
-                            D_FCAT_MODEL_FILE_P]))
+@click.option("--model_files", "-M", nargs=3, type=(unicode, unicode, unicode),
+              multiple=True,
+              callback=su.proc_tsegs_option_input,
+              default=TSEGS_DEFAULT,
+              help="".join(["File paths and metadata for segmentation models to use. Default: ",
+                            TSEGS_DEFAULT_STR]))
+@click.option("--seg_file", "-s", type=str, default=D_SEG_COMP_FILE_P,
+              help="".join(["Save the segment comparison to supplied file. Default: ",
+                            D_SEG_COMP_FILE_P]))
 @click.option("--prob", "-P", default=1.0, type=float,
               help="Probability a file will be chosen. Create a random sample. 1.0 = 100%")
 @click.pass_context
-def segmenttest(ctx, input_directory, morf_model_file, fcat_model_file, prob):
-    LOG.info("Starting segmenttest")
-
-    # -- Loading Morfessor Model --
-    LOG.info("Loading morfessor model: {}".format(morf_model_file))
-    morfmodel = seg.load_morfessor_model(morf_model_file)
-
-    # LOG.info("Loading flatcat model: {}".format(fcat_model_file))
-    # flatcatmodel = fseg.load_flatcat_model(fcat_model_file)
-
-    # -- Finding and Loading input files --
-    LOG.info("Loading input files from: {}".format(input_directory))
-    filenames = tlz.random_sample(prob=prob,
-                                  seq=u.spelunker_gen(input_directory),
-                                  random_state=ctx.obj["RANDOMSTATE"])
-
-    LOG.info("Loading and cleaning the text.")
-    txts = list(tlz.map(u.load_and_decode, filenames))
-
-    LOG.info("Number of texts {}.".format(len(txts)))
-
-    # -- Tokenizing input texts --
-    LOG.info("Creating morfessor segmented tokens.")
-    morftokens = tlz.pipe(seg.segment_many(morfmodel, txts, flatten=False),
-                          tlzc.map(list),
-                          list)
-
-    # LOG.info("Creating flatcat segmented tokens.")
-    # fcattokens = tlz.pipe(fseg.segment_many(flatcatmodel, txts, flatten=False),
-    #                       tlzc.map(list),
-    #                       list)
-
-    with open("segments.pickle", "wb") as f:
-        pickle.dump(morftokens, f, -1)
-    # with open("segments.pickle", "wb") as f:
-    #     pickle.dump([morftokens, fcattokens], f, -1)
-
-    su.log_run_time(ctx.obj["STARTTIME"])
-    LOG.info("Finished segmenttest")
-
-
-@cli.command(help="""
-""")
-@click.argument("input_directory")
-@click.option("--morf_model_file", "-M", type=str, default=D_MORF_MODEL_FILE_P,
-              help="".join(["File that contains the morfessor model to use. Default: ",
-                            D_MORF_MODEL_FILE_P]))
-@click.option("--fcat_model_file", "-S", type=str, default=D_FCAT_MODEL_FILE_P,
-              help="".join(["load this flatcat model from this file. Default: ",
-                            D_FCAT_MODEL_FILE_P]))
-@click.option("--prob", "-P", default=1.0, type=float,
-              help="Probability a file will be chosen. Create a random sample. 1.0 = 100%")
-@click.pass_context
-def mksegs(ctx, input_directory, morf_model_file, fcat_model_file, prob):
-    LOG.info("Starting segmenttest")
+def testsegs(ctx, input_directory, model_files, seg_file, prob):
+    LOG.info("Starting testsegs")
 
     # -- Loading Models --
-    LOG.info("Loading morfessor model: {}".format(morf_model_file))
-    morfmodel = seg.load_morfessor_model(morf_model_file)
-
-    LOG.info("Loading flatcat model: {}".format(fcat_model_file))
-    flatcatmodel = fseg.load_flatcat_model(fcat_model_file)
+    LOG.info("Loading models")
+    # TODO (sc) add useful replacement for KeyError.
+    segmenter = tlz.pipe(model_files,
+                         tlzc.map(lambda model: (model.type, model.filename)),
+                         mu.load_seg_models,
+                         mkt.mk_segmenters)
 
     # -- Finding and Loading input files --
     LOG.info("Loading input files from: {}".format(input_directory))
@@ -175,33 +142,28 @@ def mksegs(ctx, input_directory, morf_model_file, fcat_model_file, prob):
                                   seq=u.spelunker_gen(input_directory),
                                   random_state=ctx.obj["RANDOMSTATE"])
 
-    # print(tlz.second(filenames))
-
     LOG.info("Loading and cleaning the text.")
     txts = list(tlz.map(u.load_and_decode, filenames))
 
-    LOG.info("Number of texts {}.".format(len(txts)))
+    LOG.info("Number of files {}.".format(len(txts)))
 
     # -- Tokenizing input texts --
     LOG.info("Creating segmented tokens.")
-    # tokens0 = mkt.dual_segment_many(morfmodel, flatcatmodel, txts)
-    # # print(list(tlz.first(tokens0)))
-    # with open("test.pickle", "wb") as f:
-    #     pickle.dump(list(tlz.take(10, tokens0)), f, -1)
-    # print(list(mkt.to_string_pairs([tlz.first(tokens0)])))
 
     tokens = tlz.pipe(txts,
-                      mkt.dual_segment_many(morfmodel, flatcatmodel),
+                      mkt.segment_many(segmenter),
                       mkt.to_string_pairs(separator=" + "),  # TODO (sc) allow custom sep.
                       mkt.unique)
 
-    # print(tokens[0])
-
     LOG.info("Writing segments to file")
-    mkt.segments_to_cvs("segments_pairs.csv", tokens, sort_f=lambda t: sorted(t, key=tlz.first))
+    mkt.segments_to_cvs(seg_file, tokens,
+                        headers=tuple(tlz.concat([["original"],
+                                                  tlz.map(lambda model: model.name,
+                                                          model_files)])),
+                        sort_f=lambda t: sorted(t, key=tlz.first))
 
     su.log_run_time(ctx.obj["STARTTIME"])
-    LOG.info("Finished segmenttest")
+    LOG.info("Finished testsegs")
 
 
 if __name__ == "__main__":

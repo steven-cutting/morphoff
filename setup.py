@@ -34,7 +34,7 @@ setup(
     keywords='nlp text ngram ngrams Hebrew',
     packages=find_packages(exclude=('bin', 'tests', 'docker',
                                     'data', 'notebooks')),
-    scripts=['scripts/morphoff'],
+    scripts=['scripts/morphoff', 'scripts/fullmorphtest'],
     # entry_points='''
     #     [console_scripts]
     #     htopic=scripts.htopic:cli

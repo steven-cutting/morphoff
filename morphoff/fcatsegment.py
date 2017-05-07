@@ -53,7 +53,7 @@ def segment_text(model, txt, flatten=True):
     Curried.
     """
     return tlz.pipe(txt,
-                    tpu.simple_split_txt,
+                    tpu.split_and_clean,
                     tlzc.map(mk_segmenter(model)),
                     mseg.should_flatten(flatten),
                     list)

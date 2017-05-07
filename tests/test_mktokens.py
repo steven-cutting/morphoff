@@ -29,6 +29,22 @@ def test__mk_dual_segmenter(string, expected):
 
 
 @pytest.mark.parametrize("string,expected",
+                         [(u"foobarbaz", ([u"foobarbaz"],
+                                          [u"foo", u"bar", u"baz"],
+                                          [u"foo", u"bar", u"baz"])),
+                          (u"foo", ([u"foo"], [u"foo"], [u"foo"])),
+                          (u"הוא צילם עליו כתבה", ([u"הוא צילם עליו כתבה"],
+                                                  [u"הוא צילם עליו כתבה"],
+                                                  [u"הוא צילם עליו כתבה"],)),
+                          ])
+def test__mk_segmenters(string, expected):
+    mmodel = tu.MockMorfessorSegmentModel()
+    fmodel = tu.MockFlatCatSegmentModel()
+    segment = mkt.mk_segmenters([("morfessor2", mmodel), ("flatcat", fmodel)])
+    assert(segment(string) == expected)
+
+
+@pytest.mark.parametrize("string,expected",
                          [(u"foo bar baz", [([u"foo"], [u"foo"], [u"foo"]),
                                             ([u"bar"], [u"bar"], [u"bar"]),
                                             ([u"baz"], [u"baz"], [u"baz"])]),
@@ -62,6 +78,31 @@ def test__dual_segment_many(strings, expected, flatten):
     assert(list(mkt.dual_segment_many(mmodel, fmodel,
                                       strings,
                                       flatten=flatten)) ==
+           expected)
+
+
+@pytest.mark.parametrize("strings,expected,flatten",
+                         [([u"foo bar baz", u"foo", u"foobarbaz"],
+                           [[([u"foo"], [u"foo"], [u"foo"]),
+                             ([u"bar"], [u"bar"], [u"bar"]),
+                             ([u"baz"], [u"baz"], [u"baz"])],
+                            [([u"foo"], [u"foo"], [u"foo"])],
+                            [([u"foobarbaz"],
+                              [u"foo", u"bar", u"baz"],
+                              [u"foo", u"bar", u"baz"])]],
+                           False),
+                          ([u"foo bar baz", u"foo"],
+                           [[u"foo"], [u"foo"], [u"foo"], [u"bar"], [u"bar"], [u"bar"],
+                            [u"baz"], [u"baz"], [u"baz"], [u"foo"], [u"foo"], [u"foo"]],
+                           True),
+                          ])
+def test__segment_many(strings, expected, flatten):
+    mmodel = tu.MockMorfessorSegmentModel()
+    fmodel = tu.MockFlatCatSegmentModel()
+    segmenters = mkt.mk_segmenters([("morfessor2", mmodel), ("flatcat", fmodel)])
+    assert(list(mkt.segment_many(segmenters,
+                                 strings,
+                                 flatten=flatten)) ==
            expected)
 
 

@@ -9,8 +9,8 @@ Create tokens.
 """
 
 import csv
+import itertools as itls
 
-import toolz as tlz
 try:
     import cytoolz as tlz
     from cytoolz import curried as tlzc
@@ -25,6 +25,21 @@ from morphoff import fcatsegment as fseg
 
 
 concat_to_list = tlz.compose(list, tlz.concat)
+
+
+_MKSEGS_DICT = {"morfessor2": mseg.mk_segmenter,
+                "flatcat": fseg.mk_segmenter}
+
+
+def mk_segmenter(modeltype, model, mksegsdict=_MKSEGS_DICT):
+    """
+    modeltype - Type of segmenter - morfessor2 or flatcat.
+    model - the model that should be used to create the segmenter.
+
+    mksegsdict - {"modeltype1": mk_modeltype1_segmenter,
+                  "modeltype2": mk_modeltype2_segmenter}
+    """
+    return mksegsdict[modeltype](model)
 
 
 def mk_dual_segmenter(morfessorModel, flatcatModel):
@@ -43,6 +58,28 @@ def mk_dual_segmenter(morfessorModel, flatcatModel):
     return lambda token: ([token], msegmenter(token), fsegmenter(token))
 
 
+def into_list(item):
+    """
+    return [item, ]
+    """
+    return [item, ]
+
+
+def mk_segmenters(models, mksegsdict=_MKSEGS_DICT):
+    """
+    Provide n models in tuples with the model type ('morfessor2' or 'flatcat')
+    and the model in form:
+        (modeltype, model)
+    """
+    segmenters = tlz.pipe(models,
+                          tlzc.map(lambda model: mk_segmenter(model[0],
+                                                              model[1],
+                                                              mksegsdict=mksegsdict)),
+                          lambda segs: itls.chain([into_list], segs),
+                          list)
+    return lambda token: tuple(map(lambda f: f(token), segmenters))
+
+
 @tlz.curry
 def segment_text(segmentfunc, txt, flatten=False):
     """
@@ -53,7 +90,7 @@ def segment_text(segmentfunc, txt, flatten=False):
     Curried.
     """
     return tlz.pipe(txt,
-                    tpu.simple_split_txt,
+                    tpu.split_and_clean,
                     tlzc.map(segmentfunc),
                     mseg.should_flatten(flatten),
                     list)
@@ -64,6 +101,14 @@ def dual_segment_many(morfessorModel, flatcatModel, txts, flatten=False):
     return tlz.pipe(txts,
                     tlzc.map(segment_text(mk_dual_segmenter(morfessorModel,
                                                             flatcatModel),
+                                          flatten=flatten)),
+                    mseg.should_flatten(flatten))
+
+
+@tlz.curry
+def segment_many(segmenter, txts, flatten=False):
+    return tlz.pipe(txts,
+                    tlzc.map(segment_text(segmenter,
                                           flatten=flatten)),
                     mseg.should_flatten(flatten))
 
@@ -102,7 +147,8 @@ def encode_row(encoding, row):
                     tuple)
 
 
-def segments_to_cvs(filename, seq, delimiter='\t', sort_f=tlz.identity, encoding="utf-8"):
+def segments_to_cvs(filename, seq, headers=(u"original", u"morfessor2.0", u"flatcat"),
+                    delimiter='\t', sort_f=tlz.identity, encoding="utf-8"):
     """
     Does not include a header.
     The tuples in 'seq' should have this format:
@@ -115,7 +161,7 @@ def segments_to_cvs(filename, seq, delimiter='\t', sort_f=tlz.identity, encoding
     csv.register_dialect('custom-sep', delimiter=delimiter)
     with open(filename, 'wb') as out:
         csv_out = csv.writer(out, 'custom-sep')
-        csv_out.writerow(encode_row(encoding, (u"original", u"morfessor2.0", u"flatcat")))
+        csv_out.writerow(encode_row(encoding, headers))
         for row in sort_f(seq):
             tlz.pipe(row,
                      encode_row(encoding),
