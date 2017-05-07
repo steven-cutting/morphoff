@@ -10,7 +10,7 @@ mkdir $outputdir
 cd $outputdir
 
 printf "\n\n\t--- Making Word Count File ---\n\n"
-time command | htopic -R 2017 -L log.log mkwc -P 0.001 $corpus
+time command | htopic -R 2017 -L log.log mkwc $corpus
 
 
 
@@ -44,4 +44,4 @@ time command | morphoff -R 2017 -L log.log flatcat -M randsplit_semi_supervised_
 
 
 printf "\n\n\t--- Building the segment file ---\n\n"
-time command | morphoff -L log.log -R 2017 testsegs $corpus -P 0.001 -M morfessor2.0 morfessor2 morfessor_model.bin  -M flatcat flatcat flatcat_model.tar.gz  -M semi_superviesd_morfessor2.0 morfessor2 semi_supervised_mfessor.bin  -M semi_supervised_flatcat flatcat semi_supervised_flatcat.tar.gz -M randsplit_semi_supervised_morfessor2.0 morfessor2 randsplit_semi_supervised_mfessor.bin -M randsplit_semi_supervised_flatcat flatcat  randsplit_semi_supervised_flatcat.tar.gz -s segfile2.csv
+time command | morphoff -L log.log -R 2017 testsegs $corpus -M morfessor2.0 morfessor2 morfessor_model.bin  -M flatcat flatcat flatcat_model.tar.gz  -M semi_superviesd_morfessor2.0 morfessor2 semi_supervised_mfessor.bin  -M semi_supervised_flatcat flatcat semi_supervised_flatcat.tar.gz -M randsplit_semi_supervised_morfessor2.0 morfessor2 randsplit_semi_supervised_mfessor.bin -M randsplit_semi_supervised_flatcat flatcat  randsplit_semi_supervised_flatcat.tar.gz -s segfile2.csv
